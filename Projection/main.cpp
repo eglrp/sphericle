@@ -73,99 +73,52 @@ Mat spherical(Mat src) {
 
 	int width = src.cols, height = src.rows;
 	Mat dst(height, width, CV_8UC3, Scalar::all(0));
+
+	Mat map_x(height, width, CV_32FC1), map_y(height, width, CV_32FC1);
+
 	double radius1 = height / 2;
 	double radius2 = radius1*radius1;
 	//球面坐标
 	double x, y;
 	//原坐标
 	int x1, y1;
-	int xx, yy;
+	float xx, yy;
 	double middle = 2 * radius1 / PI;
 	double matan;
 	double oa;
-
-	//双线性插值算法相关变量
-	//int i_original_img_hnum, i_original_img_wnum;//目标点坐标
-	double distance_to_a_y, distance_to_a_x;//在原图像中与a点的水平距离  
-	int original_point_a, original_point_b, original_point_c, original_point_d;
 	for (int i = 0; i < height; i++)
 	{
 		uchar* row_src = src.ptr(i);
 		uchar* row_dst = dst.ptr(i);
 		for (int j = 0; j < width; j++)
 		{
-			//在球体视场内才处理
-			if (((i - height / 2)*(i - height / 2) + (j - width / 2)*(j - width / 2)) < radius2)
+			//移动坐标轴，使原点在图像中心
+			x1 = j - width / 2;
+			y1 = height / 2 - i;
+
+			if (x1 != 0)
 			{
-				/***********球面贴合***********/
-				//移动坐标轴，使原点在图像中心
-				x1 = j - width / 2;
-				y1 = height /2  - i;
-
-				if (x1 != 0)
-				{
-					oa = middle*asin(sqrt(y1*y1 + x1*x1) / radius1);//这里在确定图像大小的情况下可以用查表法来完成，这样会大大的提高其效率
-					matan = atan2(y1, x1);
-					x = cos(matan)*oa;
-					y = sin(matan)*oa;
-				}
-				else
-				{
-					y = asin(y1 / radius1)*middle;
-					x = 0;
-				}
-				/***********球面贴合***********/
-				//坐标转换
-				yy = (height / 2 - y);
-				
-				xx = (x + width / 2);
-				//边界处
-				if (i == 0 || j == 0 || i == height - 1 || j == width - 1)
-				{
-					dst.at<Vec3b>(i, j)[0] = row_src[j * 3];
-					dst.at<Vec3b>(i, j)[1] = row_src[j * 3 + 1];
-					dst.at<Vec3b>(i, j)[2] = row_src[j * 3 + 2];
-				}
-				else 
-				{
-					 //x1方向
-					 //src.at<Vec3b>(i - 1, j - 1)*0.5 + src.at<Vec3b>(i - 1, j + 1)*0.5;
-					 //x2方向
-					 //src.at<Vec3b>(i + 1, j - 1)*0.5 + src.at<Vec3b>(i + 1, j + 1)*0.5;
-
-					 dst.at<Vec3b>(yy,xx)[0]= (src.at<Vec3b>(i - 1, j - 1)[0]*0.5 + src.at<Vec3b>(i - 1, j + 1)[0]*0.5)*0.5+
-						 (src.at<Vec3b>(i + 1, j - 1)[0]*0.5 + src.at<Vec3b>(i + 1, j + 1)[0]*0.5)*0.5;
-
-					 dst.at<Vec3b>(yy, xx)[1] = (src.at<Vec3b>(i - 1, j - 1)[1] * 0.5 + src.at<Vec3b>(i - 1, j + 1)[1] * 0.5)*0.5 +
-						 (src.at<Vec3b>(i + 1, j - 1)[1] * 0.5 + src.at<Vec3b>(i + 1, j + 1)[1] * 0.5)*0.5;
-
-					 dst.at<Vec3b>(yy, xx)[2] =(src.at<Vec3b>(i - 1, j - 1)[2] * 0.5 + src.at<Vec3b>(i - 1, j + 1)[2] * 0.5)*0.5 +
-						 (src.at<Vec3b>(i + 1, j - 1)[2] * 0.5 + src.at<Vec3b>(i + 1, j + 1)[2] * 0.5)*0.5;
-
-
-				}
-
-
-// 				dst.at<Vec3b>(yy, xx)[0] = row_src[j * 3];
-// 				dst.at<Vec3b>(yy, xx)[1] = row_src[j * 3 + 1];
-// 				dst.at<Vec3b>(yy, xx)[2] = row_src[j * 3 + 2];
-
-
-
-
-
+				oa = middle*asin(sqrt(y1*y1 + x1*x1) / radius1);
+				matan = atan2(y1, x1);
+				x = cos(matan)*oa;
+				y = sin(matan)*oa;
 			}
 			else
 			{
-				dst.at<Vec3b>(i, j)[0] = row_src[j * 3];
-				dst.at<Vec3b>(i, j)[1] = row_src[j * 3 + 1];
-				dst.at<Vec3b>(i, j)[2] = row_src[j * 3 + 2];
+				y = asin(y1 / radius1)*middle;
+				x = 0;
 			}
+			//坐标转换
+			yy = (height / 2 - y);
+			xx = (x + width / 2);
 
-
-
+			//这里在确定图像大小的情况下可以用查表法来完成，这样会大大的提高其效率
+			map_x.at<float>(i, j) = xx;
+			map_y.at<float>(i, j) = yy;
 		}
 	}
+
+	remap(src, dst, map_x, map_y, CV_INTER_LINEAR, BORDER_CONSTANT, Scalar(255, 0, 0));
 
 	return dst;
 }
@@ -448,7 +401,7 @@ void BGRBilinearScale(const Mat src, Mat& dst) {
 
 int main(int argc, char** argv)
 {
-	Mat img_1 = imread("D:/imags/M.jpg");
+	Mat img_1 = imread("D:/imags/horse.jpg");
 	//Mat dst;
 	
 	// 	imwrite("res.jpg", cylinder(img_1));
